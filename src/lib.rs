@@ -107,6 +107,7 @@ impl PlayerFactory {
             Self::Random(0.9),
             Self::Random(0.1),
             Self::TicForToe,
+            Self::TicForToeD,
         ]
     }
 }
