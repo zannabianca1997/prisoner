@@ -67,6 +67,7 @@ pub enum PlayerFactory {
     TitFotTatS,
     Mean,
     Pavlov,
+    Grim,
 }
 impl PlayerFactory {
     fn gen(&self, _weights: &Weights, rng: &mut impl Rng) -> Player {
@@ -82,6 +83,7 @@ impl PlayerFactory {
             },
             PlayerFactory::Mean => Player::Mean,
             PlayerFactory::Pavlov => Player::Pavlov,
+            PlayerFactory::Grim => Player::Grim(false),
         }
     }
     pub fn name(&self) -> Cow<'_, str> {
@@ -94,6 +96,7 @@ impl PlayerFactory {
             PlayerFactory::RandomFixed(p) => format!("RandomFixed {:.0}%", 100. * p).into(),
             PlayerFactory::Mean => "Mean    ".into(),
             PlayerFactory::Pavlov => "Pavlov  ".into(),
+            PlayerFactory::Grim => "Grim    ".into(),
         }
     }
     pub fn description(&self) -> Cow<'_, str> {
@@ -112,6 +115,7 @@ impl PlayerFactory {
                 "Mean the other moves, then answer with the same distribution".into()
             }
             PlayerFactory::Pavlov => "Cooperate if the opponent moved alike".into(),
+            PlayerFactory::Grim => "Cooperate until defected".into(),
         }
     }
 
@@ -129,6 +133,7 @@ impl PlayerFactory {
             Self::TitFotTatS,
             Self::Mean,
             Self::Pavlov,
+            Self::Grim,
         ]
     }
 }
@@ -143,6 +148,7 @@ pub enum Player {
     TitForTat2,
     Mean,
     Pavlov,
+    Grim(bool),
 }
 impl Player {
     fn play(&mut self, hist: (&[Choice], &[Choice]), rng: &mut impl Rng) -> Choice {
@@ -168,6 +174,16 @@ impl Player {
                 rng.gen_bool(m).into()
             }
             Player::Pavlov => (hist.0.last() == hist.1.last()).into(),
+            Player::Grim(defected) => {
+                if let Some(Choice::Defect) = hist.1.last() {
+                    *defected = true;
+                }
+                if defected {
+                    Choice::Defect
+                } else {
+                    Choice::Collab
+                }
+            }
         }
     }
 }
