@@ -178,7 +178,7 @@ impl Player {
                 if let Some(Choice::Defect) = hist.1.last() {
                     *defected = true;
                 }
-                if defected {
+                if *defected {
                     Choice::Defect
                 } else {
                     Choice::Collab
