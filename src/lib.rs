@@ -55,7 +55,7 @@ impl Default for Weights {
     fn default() -> Self {
         Self {
             defect_defect: 2,
-            defect_collab: (0, 3),
+            defect_collab: (3, 0),
             collab_collab: 1,
         }
     }
@@ -67,6 +67,8 @@ pub enum PlayerFactory {
     Defector,
     Collaborator,
     Random(f64),
+    TicForToe,
+    TicForToeD,
 }
 impl PlayerFactory {
     fn gen(&self, weights: &Weights, rng: &mut impl Rng) -> Player {
@@ -74,6 +76,8 @@ impl PlayerFactory {
             PlayerFactory::Defector => Player::Defector,
             PlayerFactory::Collaborator => Player::Collaborator,
             PlayerFactory::Random(p) => Player::Random(*p),
+            PlayerFactory::TicForToe => Player::TicForToe,
+            PlayerFactory::TicForToeD => Player::TicForToeD,
         }
     }
     pub fn name(&self) -> Cow<'_, str> {
@@ -81,6 +85,8 @@ impl PlayerFactory {
             PlayerFactory::Defector => "Defector".into(),
             PlayerFactory::Collaborator => "Collaborator".into(),
             PlayerFactory::Random(p) => format!("Random {:.0}%", 100. * p).into(),
+            PlayerFactory::TicForToe => "TicForToe".into(),
+            PlayerFactory::TicForToeD => "TicForToeD".into(),
         }
     }
     pub fn description(&self) -> Cow<'_, str> {
@@ -88,6 +94,8 @@ impl PlayerFactory {
             PlayerFactory::Defector => "Always defect".into(),
             PlayerFactory::Collaborator => "Always collaborate".into(),
             PlayerFactory::Random(p) => format!("Collaborate {:.0}% of times", 100. * p).into(),
+            PlayerFactory::TicForToe => "Collaborate, then answer with the last move".into(),
+            PlayerFactory::TicForToeD => "Defect, then answer with the last move".into(),
         }
     }
 
@@ -98,6 +106,7 @@ impl PlayerFactory {
             Self::Random(0.5),
             Self::Random(0.9),
             Self::Random(0.1),
+            Self::TicForToe,
         ]
     }
 }
@@ -108,6 +117,8 @@ pub enum Player {
     Defector,
     Collaborator,
     Random(f64),
+    TicForToe,
+    TicForToeD,
 }
 impl Player {
     fn play(&mut self, hist: (&[Choice], &[Choice]), rng: &mut impl Rng) -> Choice {
@@ -115,6 +126,8 @@ impl Player {
             Player::Defector => Choice::Defect,
             Player::Collaborator => Choice::Collab,
             Player::Random(p) => rng.gen_bool(*p).into(),
+            Player::TicForToe => hist.1.first().copied().unwrap_or(Choice::Collab),
+            Player::TicForToeD => hist.1.first().copied().unwrap_or(Choice::Defect),
         }
     }
 }
@@ -154,15 +167,21 @@ where
     turn_distr: TD,
 
     /// Approximate minimum distance of two player, where one would dominate the other
-    d: f64,
+    scale: f64,
     /// Correction factor
-    k: f64,
+    k_factor: f64,
 }
 impl<TD> EloPool<TD>
 where
     TD: Distribution<usize>,
 {
-    pub fn new(weights: Weights, turn_distr: TD, starting_pts: usize, d: f64, k: f64) -> Self {
+    pub fn new(
+        weights: Weights,
+        turn_distr: TD,
+        starting_pts: usize,
+        scale: f64,
+        k_factor: f64,
+    ) -> Self {
         Self {
             players: PlayerFactory::all()
                 .into_iter()
@@ -170,8 +189,8 @@ where
                 .collect(),
             weights,
             turn_distr,
-            d,
-            k,
+            scale,
+            k_factor,
         }
     }
 
@@ -195,8 +214,8 @@ where
             rng,
         );
         let rating_diff = (self.players[i1].1 as f64 - self.players[i2].1 as f64);
-        let expected = (rating_diff / self.d).tanh();
-        let correction = (self.k * (outcome - expected)) as isize;
+        let expected = (rating_diff / self.scale).tanh();
+        let correction = (self.k_factor * (outcome - expected)) as isize;
         // correcting the players strenght
         self.players[i1].1 = self.players[i1].1.saturating_add_signed(correction);
         self.players[i2].1 = self.players[i2].1.saturating_add_signed(-correction);
@@ -212,8 +231,8 @@ where
 pub struct EloPoolConfig {
     pub weights: Weights,
     pub starting_pts: usize,
-    pub d: f64,
-    pub k: f64,
+    pub scale: f64,
+    pub k_factor: f64,
     pub min_turns: usize,
     pub max_turns: usize,
 }
@@ -223,8 +242,8 @@ impl Default for EloPoolConfig {
         Self {
             weights: Default::default(),
             starting_pts: 700,
-            d: 100.,
-            k: 32.,
+            scale: 100.,
+            k_factor: 32.,
             min_turns: 100,
             max_turns: 200,
         }
@@ -236,8 +255,8 @@ impl From<EloPoolConfig> for EloPool<Uniform<usize>> {
         EloPoolConfig {
             weights,
             starting_pts,
-            d,
-            k,
+            scale,
+            k_factor,
             min_turns,
             max_turns,
         }: EloPoolConfig,
@@ -246,8 +265,8 @@ impl From<EloPoolConfig> for EloPool<Uniform<usize>> {
             weights,
             Uniform::new(min_turns, max_turns + 1),
             starting_pts,
-            d,
-            k,
+            scale,
+            k_factor,
         )
     }
 }
