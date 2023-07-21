@@ -1,15 +1,10 @@
 #![feature(const_trait_impl)]
 #![feature(map_many_mut)]
 
-use std::{borrow::Cow, collections::HashMap};
+use std::borrow::Cow;
 
-use rand::{
-    distributions::Uniform,
-    prelude::Distribution,
-    seq::{index, IteratorRandom, SliceRandom},
-    Rng,
-};
-use serde::{Deserialize, Serialize};
+use rand::{distributions::Uniform, prelude::Distribution, Rng};
+use serde::Deserialize;
 
 /// Possible choices
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
@@ -67,17 +62,26 @@ pub enum PlayerFactory {
     Defector,
     Collaborator,
     Random(f64),
-    TicForToe,
-    TicForToeD,
+    RandomFixed(f64),
+    TitForTat,
+    TitFotTatS,
+    Mean,
+    Pavlov,
 }
 impl PlayerFactory {
-    fn gen(&self, weights: &Weights, rng: &mut impl Rng) -> Player {
+    fn gen(&self, _weights: &Weights, rng: &mut impl Rng) -> Player {
         match self {
             PlayerFactory::Defector => Player::Defector,
             PlayerFactory::Collaborator => Player::Collaborator,
             PlayerFactory::Random(p) => Player::Random(*p),
-            PlayerFactory::TicForToe => Player::TicForToe,
-            PlayerFactory::TicForToeD => Player::TicForToeD,
+            PlayerFactory::TitForTat => Player::TitForTat,
+            PlayerFactory::TitFotTatS => Player::TitForTat2,
+            PlayerFactory::RandomFixed(p) => match rng.gen_bool(*p) {
+                true => Player::Collaborator,
+                false => Player::Defector,
+            },
+            PlayerFactory::Mean => Player::Mean,
+            PlayerFactory::Pavlov => Player::Pavlov,
         }
     }
     pub fn name(&self) -> Cow<'_, str> {
@@ -85,8 +89,11 @@ impl PlayerFactory {
             PlayerFactory::Defector => "Defector".into(),
             PlayerFactory::Collaborator => "Collaborator".into(),
             PlayerFactory::Random(p) => format!("Random {:.0}%", 100. * p).into(),
-            PlayerFactory::TicForToe => "TicForToe".into(),
-            PlayerFactory::TicForToeD => "TicForToeD".into(),
+            PlayerFactory::TitForTat => "TitForTat".into(),
+            PlayerFactory::TitFotTatS => "TitFotTatS".into(),
+            PlayerFactory::RandomFixed(p) => format!("RandomFixed {:.0}%", 100. * p).into(),
+            PlayerFactory::Mean => "Mean    ".into(),
+            PlayerFactory::Pavlov => "Pavlov  ".into(),
         }
     }
     pub fn description(&self) -> Cow<'_, str> {
@@ -94,8 +101,17 @@ impl PlayerFactory {
             PlayerFactory::Defector => "Always defect".into(),
             PlayerFactory::Collaborator => "Always collaborate".into(),
             PlayerFactory::Random(p) => format!("Collaborate {:.0}% of times", 100. * p).into(),
-            PlayerFactory::TicForToe => "Collaborate, then answer with the last move".into(),
-            PlayerFactory::TicForToeD => "Defect, then answer with the last move".into(),
+            PlayerFactory::TitForTat => "Collaborate, then answer with the last move".into(),
+            PlayerFactory::TitFotTatS => "Defect, then answer with the last move".into(),
+            PlayerFactory::RandomFixed(p) => format!(
+                "Choose the move at the start (collaborate {}%), then stick with it",
+                100. * p
+            )
+            .into(),
+            PlayerFactory::Mean => {
+                "Mean the other moves, then answer with the same distribution".into()
+            }
+            PlayerFactory::Pavlov => "Cooperate if the opponent moved alike".into(),
         }
     }
 
@@ -106,8 +122,13 @@ impl PlayerFactory {
             Self::Random(0.5),
             Self::Random(0.9),
             Self::Random(0.1),
-            Self::TicForToe,
-            Self::TicForToeD,
+            Self::RandomFixed(0.5),
+            Self::RandomFixed(0.9),
+            Self::RandomFixed(0.1),
+            Self::TitForTat,
+            Self::TitFotTatS,
+            Self::Mean,
+            Self::Pavlov,
         ]
     }
 }
@@ -118,8 +139,10 @@ pub enum Player {
     Defector,
     Collaborator,
     Random(f64),
-    TicForToe,
-    TicForToeD,
+    TitForTat,
+    TitForTat2,
+    Mean,
+    Pavlov,
 }
 impl Player {
     fn play(&mut self, hist: (&[Choice], &[Choice]), rng: &mut impl Rng) -> Choice {
@@ -127,8 +150,24 @@ impl Player {
             Player::Defector => Choice::Defect,
             Player::Collaborator => Choice::Collab,
             Player::Random(p) => rng.gen_bool(*p).into(),
-            Player::TicForToe => hist.1.first().copied().unwrap_or(Choice::Collab),
-            Player::TicForToeD => hist.1.first().copied().unwrap_or(Choice::Defect),
+            Player::TitForTat => hist.1.first().copied().unwrap_or(Choice::Collab),
+            Player::TitForTat2 => hist.1.first().copied().unwrap_or(Choice::Defect),
+            Player::Mean => {
+                let m = if hist.1.is_empty() {
+                    0.5
+                } else {
+                    hist.1
+                        .iter()
+                        .map(|c| match c {
+                            Choice::Defect => 0,
+                            Choice::Collab => 1,
+                        })
+                        .sum::<usize>() as f64
+                        / hist.1.len() as f64
+                };
+                rng.gen_bool(m).into()
+            }
+            Player::Pavlov => (hist.0.last() == hist.1.last()).into(),
         }
     }
 }
@@ -214,7 +253,7 @@ where
             self.turn_distr.sample(rng),
             rng,
         );
-        let rating_diff = (self.players[i1].1 as f64 - self.players[i2].1 as f64);
+        let rating_diff = self.players[i1].1 as f64 - self.players[i2].1 as f64;
         let expected = (rating_diff / self.scale).tanh();
         let correction = (self.k_factor * (outcome - expected)) as isize;
         // correcting the players strenght
@@ -244,7 +283,7 @@ impl Default for EloPoolConfig {
             weights: Default::default(),
             starting_pts: 700,
             scale: 100.,
-            k_factor: 32.,
+            k_factor: 16.,
             min_turns: 100,
             max_turns: 200,
         }

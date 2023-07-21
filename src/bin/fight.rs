@@ -21,7 +21,7 @@ struct Args {
     starting_pts: usize,
     #[clap(short, long, default_value = "100")]
     scale: f64,
-    #[clap(short, long, default_value = "32")]
+    #[clap(short, long, default_value = "16")]
     k_factor: f64,
     #[clap(short = 't', long, default_value = "100")]
     min_turns: usize,
