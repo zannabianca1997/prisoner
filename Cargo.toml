@@ -6,5 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rand = "0.8.5"
+anyhow = "1.0.72"
+clap = { version = "4.3.17", features = ["derive"] }
+clearscreen = "2.0.1"
+lazy-regex = "3.0.0"
+rand = { version = "0.8.5", features = ["small_rng"] }
 serde = { version = "1.0.174", features = ["derive"] }
